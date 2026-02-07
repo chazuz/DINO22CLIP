@@ -1,0 +1,158 @@
+# DINO22CLIP
+
+**CLIP ↔ DINOv2 Embedding Translation**
+
+This repository provides methods for translating embeddings between **CLIP (ViT-B/32, 512-dimensional)** and **DINOv2 (ViT-B/14, 768-dimensional)**. It supports multiple translation approaches:
+
+1. **MLP (Multi-Layer Perceptron)** – Simple baseline with strong consistency.
+2. **Flow Matching** – ODE-based generative flows that preserve geometric structure.
+3. **Diffusion Models** – Conditional DDPM/DDIM models capable of high-fidelity embedding generation.
+
+The repository includes **training scripts, generation scripts, evaluation utilities, and embedding dataset handling**. Round-trip translations are calculated by specifying input embeddings and conditional settings.
+
+---
+
+## Repository Structure
+
+```
+DINO22CLIP/
+├── data/                     # Embedding datasets (to be provided externally)
+├── diffusion/                # Diffusion model training & generation
+│   ├── configs/              # diffusion_config.py
+│   ├── logs/                 # Training logs
+│   ├── models/               # clip2dino.pt, dino2clip.pt
+│   └── src/                  # generate.py, train.py, utils.py, utils_ddim.py
+├── flow_matching/            # Flow-based translators
+│   ├── configs/              # flow_config.py
+│   ├── logs/
+│   ├── models/               # clip2dino_flow.pt, dino2clip_flow.pt
+│   └── src/                  # model.py, train.py, run.py, utils.py
+├── mlp_baseline/             # MLP translators
+│   ├── logs/
+│   ├── models/               # clip2dino_mlp.pt, dino2clip_mlp.pt
+│   └── src/                  # train.py, run.py
+├── logs/                     # Evaluation logs
+│   └── eval/
+├── src/                      # Evaluation & utilities
+│   ├── compute_knn_purity.py
+│   ├── embedding_dataset.py
+│   ├── eval/
+│   │   ├── eval_pca.py
+│   │   └── knn_purity.py
+│   ├── eval_pca_roundtrips.py
+│   └── summarize_embeddings.py
+├── requirements.txt
+└── run_task.slurm
+```
+
+---
+
+## Embedding & Model Configurations
+
+| Encoder | Dimensionality |
+| ------- | -------------- |
+| CLIP    | 512            |
+| DINOv2  | 768            |
+
+### Shared Hyperparameters
+
+```python
+BATCH_SIZE = 256
+LEARNING_RATE = 1e-4
+EPOCHS = 50
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+```
+
+### Model-Specific Parameters
+
+| Model         | Key Parameters                                                     |
+| ------------- | ------------------------------------------------------------------ |
+| **MLP**       | 2 hidden layers, 256 units, ReLU activations                       |
+| **Flow**      | ODE integration, 50 steps                                          |
+| **Diffusion** | DDPM: 1000 stochastic steps, DDIM: 50 deterministic steps, eta=0.0 |
+
+---
+
+## Training Scripts
+
+### MLP
+
+* **Location:** `mlp_baseline/src/train.py`
+* Trains a multi-layer perceptron to translate embeddings between CLIP and DINO.
+
+### Flow Matching
+
+* **Location:** `flow_matching/src/train.py`
+* Trains a flow-based model preserving geometric properties during translation.
+
+### Diffusion
+
+* **Location:** `diffusion/src/train.py`
+* Trains conditional diffusion models (DDPM/DDIM) for embedding translation.
+
+---
+
+## Generation Scripts
+
+### MLP Generation
+
+* **Script:** `mlp_baseline/src/run.py`
+* **Arguments:**
+
+  * `--model_path` Path to trained MLP checkpoint
+  * `--input_embeddings` Path to source embeddings
+  * `--output_embeddings` Path to save translated embeddings
+
+### Flow Matching Generation
+
+* **Script:** `flow_matching/src/run.py`
+* **Arguments:**
+
+  * `--model_path` Path to trained flow checkpoint
+  * `--input_embeddings` Path to source embeddings
+  * `--output_embeddings` Path to save translated embeddings
+
+### Diffusion Generation
+
+* **Script:** `diffusion/src/generate.py`
+* Supports **one-way** or **conditional round-trip translations** with DDPM/DDIM samplers.
+* **Arguments:**
+
+| Argument       | Description                                                |
+| -------------- | ---------------------------------------------------------- |
+| `--input`      | Path to source embeddings (.pt)                            |
+| `--model`      | Path to trained diffusion checkpoint (.pt)                 |
+| `--output`     | Path to save generated embeddings (.pt)                    |
+| `--target-dim` | Dimension of target embedding space (CLIP=512, DINO=768)   |
+| `--sampler`    | `'ddpm'` (stochastic) or `'ddim'` (deterministic)          |
+| `--ddim-steps` | Number of DDIM steps (ignored for DDPM)                    |
+| `--ddim-eta`   | Stochasticity for DDIM (0.0 deterministic, 1.0 stochastic) |
+| `--batch-size` | Batch size for generation                                  |
+
+---
+
+## Evaluation Utilities
+
+* **`compute_knn_purity.py`**: Computes k-nearest neighbor purity metrics.
+* **`embedding_dataset.py`**: Handles loading and batching embedding datasets.
+* **`eval/knn_purity.py`**: Implements kNN evaluation functions.
+* **`eval_pca.py`**: PCA visualizations for embeddings.
+* **`eval_pca_roundtrips.py`**: PCA-based evaluation of round-trip translations.
+* **`summarize_embeddings.py`**: Aggregates embedding statistics.
+
+> Round-trip consistency is evaluated by conditioning on input embeddings; no separate round-trip generation scripts are required.
+
+---
+
+## SLURM Usage
+
+* **Script:** `run_task.slurm`
+* Enables batch training or generation on cluster GPUs.
+
+---
+
+## Notes
+
+* Embeddings and models are stored under their respective `models/` and `logs/` directories.
+* The repository supports **all major translation pipelines** (MLP, Flow, Diffusion) and **conditional round-trip evaluation**.
+* Hyperparameters are kept consistent across all models for fair comparison
